@@ -297,6 +297,33 @@
     const read = new Map((Store.get().read && Store.get().read[p.id]) || []);
     let author = null;
     let papers = { recent: null, cited: null };
+    let openalexPlace = null; // { names, agrees } once OpenAlex has loaded
+
+    // Is this person still at the university we list? Combines the homepage check
+    // (scripts/check_affiliations.py) with OpenAlex's latest affiliation.
+    function affiliationNotices() {
+      const a = p.affil;
+      const when = a && a.checked ? new Date(a.checked + "T00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+      const out = [];
+      if (a && a.status === "moved") out.push({ level: "warn", html: `<strong>Possible move.</strong> ${esc(a.note)} <span class="faint">(checked ${when})</span>` });
+      if (openalexPlace && !openalexPlace.agrees) out.push({ level: "warn", html: `<strong>OpenAlex disagrees.</strong> Their most recent papers list them at ${esc(openalexPlace.names.join(", "))}, not ${esc(u.name)}.` });
+      if (a && a.status === "ok") out.push({ level: out.length ? "" : "ok", html: `${icon("check")} Homepage confirms ${esc(u.name)} <span class="faint">(checked ${when})</span>${openalexPlace && openalexPlace.agrees && openalexPlace.names.length ? "; OpenAlex agrees" : ""}.` });
+      else if (a && a.status === "gone") out.push({ level: "", html: `Homepage link is broken <span class="faint">(checked ${when})</span>, so we couldn't confirm they're still at ${esc(u.name)}.` });
+      else if (a && a.status === "unknown") out.push({ level: "", html: `Couldn't verify from their homepage: ${esc(a.note)}` });
+      else if (!a) out.push({ level: "", html: `Affiliation not verified yet.` });
+      if (openalexPlace && openalexPlace.agrees && openalexPlace.names.length && !(a && a.status === "ok")) out.push({ level: out.some((n) => n.level === "warn") ? "" : "ok", html: `OpenAlex's latest papers list them at ${esc(openalexPlace.names.join(", "))}.` });
+      return out;
+    }
+
+    function renderAffiliation(root) {
+      const notices = affiliationNotices();
+      root.querySelector("#affil-status").innerHTML = notices.map((n) => `<div class="notice ${n.level}">${n.html}</div>`).join("");
+      const risky = notices.some((n) => n.level === "warn");
+      const confirmed = !risky && notices.some((n) => n.level === "ok");
+      root.querySelector("#email-affil").innerHTML = risky
+        ? `<div class="notice warn" style="margin-bottom:14px"><strong>Check where they work before sending.</strong> This draft says you're interested in ${esc(u.name)}, but there are signs they may have moved (see the top of this page). Confirm on their homepage and edit the email if needed.</div>`
+        : confirmed ? "" : `<div class="notice" style="margin-bottom:14px">We couldn't confirm they're still at ${esc(u.name)}. Take a quick look at their homepage before sending.</div>`;
+    }
 
     function emailDraft() {
       const pr = Store.get().profile;
@@ -362,6 +389,10 @@
         root.querySelector("#papers").innerHTML = "";
         return;
       }
+      if (author) {
+        openalexPlace = OpenAlex.currentAffiliation(author, u);
+        renderAffiliation(root);
+      }
       if (!author) {
         prof.innerHTML = `<div class="notice">Couldn't find this professor on OpenAlex. Use their homepage or Google Scholar instead.</div>`;
         root.querySelector("#papers").innerHTML = "";
@@ -376,7 +407,7 @@
           <div><strong>${stats.h_index != null ? stats.h_index : "—"}</strong><span>h-index</span></div>
         </div>
         ${topics.length ? `<h3 style="margin:18px 0 10px">Research topics</h3><div style="display:flex;flex-wrap:wrap;gap:6px">${topics.map((t) => `<span class="chip">${esc(t.display_name)}</span>`).join("")}</div>` : ""}
-        <p class="small faint" style="margin-top:14px">From <a href="${esc(author.id)}" target="_blank" rel="noopener" style="text-decoration:underline">OpenAlex</a>${p.orcid ? " (matched by ORCID)" : " (matched by name + university — double-check on their homepage)"}.</p>`;
+        <p class="small faint" style="margin-top:14px">From <a href="${esc(author.id)}" target="_blank" rel="noopener" style="text-decoration:underline">OpenAlex</a>${p.orcid && String(author.orcid || "").endsWith(p.orcid) ? " (matched by ORCID)" : " (matched by name + university — double-check on their homepage)"}.</p>`;
       renderEmail(root);
       loadPapers(root, "recent");
     }
@@ -400,6 +431,7 @@
               ${p.orcid ? link("https://orcid.org/" + p.orcid, "ORCID") : ""}
               <a class="btn" href="#email">${icon("mail")} Draft email</a>
             </div>
+            <div id="affil-status"></div>
           </div>
         </div>
 
@@ -415,6 +447,7 @@
 
             <div class="panel" id="email">
               <h3>${icon("mail")} Draft an outreach email</h3>
+              <div id="email-affil"></div>
               <p class="small muted" style="margin-bottom:14px">Built from your <a href="#/settings" style="text-decoration:underline">profile</a> and the papers you ticked. Fill in the [brackets] yourself — specific, honest emails get replies; generic ones don't. Find their email address on their homepage.</p>
               <label class="field">Subject<input class="input" id="email-subject"></label>
               <label class="field" style="margin-top:12px">Message<textarea class="textarea" id="email-body" rows="16"></textarea></label>
@@ -446,6 +479,7 @@
       </div>`,
       mount(root) {
         renderEmail(root);
+        renderAffiliation(root);
         loadAuthor(root);
         root.addEventListener("click", (e) => {
           const tab = e.target.closest("[data-tab]");

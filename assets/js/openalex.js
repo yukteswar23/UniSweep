@@ -74,6 +74,10 @@
   // otherwise by name, picking the candidate whose institution matches.
   const AUTHOR_FIELDS = "&select=id,display_name,works_count,cited_by_count,summary_stats,topics,last_known_institutions,affiliations,orcid";
 
+  // Wrongly linked ORCIDs and same-name researchers in other fields are common, so a
+  // record only counts if computer science shows up among its main topics.
+  const isCS = (a) => (a.topics || []).slice(0, 5).some((t) => t.field && /\/17$/.test(t.field.id));
+
   async function findAuthor(prof, uni) {
     if (prof.orcid) {
       // One ORCID can be attached to several OpenAlex records (including tiny
@@ -81,7 +85,7 @@
       const res = await get("/authors?filter=orcid:" + prof.orcid + "&per_page=10" + AUTHOR_FIELDS);
       const nameTokens = tokens(prof.name);
       const nameMatch = (a) => [...nameTokens].every((t) => tokens(a.display_name).has(t));
-      const sorted = res.results.slice().sort((a, b) => nameMatch(b) - nameMatch(a) || b.works_count - a.works_count);
+      const sorted = res.results.filter(isCS).sort((a, b) => nameMatch(b) - nameMatch(a) || b.works_count - a.works_count);
       if (sorted.length) return sorted[0];
     }
     const res = await get("/authors?search=" + encodeURIComponent(prof.name) + "&per_page=10" + AUTHOR_FIELDS);
@@ -91,7 +95,7 @@
       const insts = [...(a.last_known_institutions || []), ...(a.affiliations || []).map((x) => x.institution)];
       let overlap = 0;
       insts.forEach((i) => tokens((i && i.display_name) || "").forEach((t) => want.has(t) && overlap++));
-      const score = overlap * 1000 + Math.log10(1 + (a.works_count || 0));
+      const score = (isCS(a) ? 5000 : 0) + overlap * 1000 + Math.log10(1 + (a.works_count || 0));
       if (score > bestScore) { best = a; bestScore = score; }
     }
     return best;
@@ -102,8 +106,22 @@
     return res.results.map(normalizeWork).filter((w) => !isNoise(w));
   }
 
+  // Where OpenAlex thinks this person works now (from their most recent papers),
+  // and whether that agrees with the university we list.
+  function currentAffiliation(author, uni) {
+    const names = (author.last_known_institutions || []).map((i) => i && i.display_name).filter(Boolean);
+    const want = new Set([...tokens(uni.name), ...tokens(uni.short)].filter((t) => !["univ", "inst", "tech", "sci"].includes(t)));
+    const agrees = names.some((n) => {
+      const have = tokens(n);
+      const hits = [...want].filter((t) => have.has(t)).length;
+      return hits >= Math.max(1, want.size - 1);
+    });
+    return { names, agrees: !names.length || agrees };
+  }
+
   window.OpenAlex = {
     findAuthor,
+    currentAffiliation,
     // Restricted to computer science: OpenAlex sometimes merges same-name researchers
     // from other fields into one profile, and this hides most of those papers.
     authorWorks: (authorId, sort) => works("author.id:" + authorId.split("/").pop() + ",primary_topic.field.id:17", sort || "publication_date:desc", 20),

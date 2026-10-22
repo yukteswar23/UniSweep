@@ -44,6 +44,22 @@ python scripts/build_data.py --refresh
 This re-downloads CSRankings and rewrites `data/data.js`. Field definitions and thresholds
 are at the top of `scripts/build_data.py`.
 
+### Checking that professors haven't moved
+
+CSRankings can lag behind when someone changes university, which matters before you write
+"I'm interested in joining X". Two checks guard against that:
+
+- **Homepage check:** `python scripts/check_affiliations.py` visits every professor's homepage
+  and writes `data/affiliations.js`. It looks for redirects to another university, phrases
+  like "I have moved to…", and whether the page still names the listed university.
+  Pages checked in the last 14 days are skipped, so re-running it is cheap; `--refresh` forces
+  a full re-check (about 30–40 minutes).
+- **Live OpenAlex check:** each professor page compares the university we list with the
+  institution on their most recent papers.
+
+The professor page shows the result at the top. If there are signs of a move, the email
+drafter warns you before you send. Lists show a "may have moved" tag.
+
 ## Project layout
 
 ```
@@ -56,7 +72,9 @@ assets/js/ui.js         shared components (cards, rows, icons)
 assets/js/views.js      one function per page
 assets/js/app.js        routing, Ctrl K search, dark mode
 data/data.js            generated faculty data (don't edit by hand)
+data/affiliations.js    generated homepage checks (don't edit by hand)
 scripts/build_data.py   builds data/data.js
+scripts/check_affiliations.py  builds data/affiliations.js
 ```
 
 ## Known limitations

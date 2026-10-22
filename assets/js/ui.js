@@ -9,7 +9,9 @@
   const unis = D.universities;
   const faculty = D.faculty;
   unis.forEach((u, i) => { u.index = i; u.rank = i + 1; u.people = []; });
-  faculty.forEach((p) => { p.u = unis[p.uni]; p.u.people.push(p); });
+  // Homepage checks from scripts/check_affiliations.py (optional file).
+  const AFFIL = window.UNISWEEP_AFFILIATIONS || { generated: "", byId: {} };
+  faculty.forEach((p) => { p.u = unis[p.uni]; p.u.people.push(p); p.affil = AFFIL.byId[p.id] || null; });
   const uniById = Object.fromEntries(unis.map((u) => [u.id, u]));
   const facultyById = Object.fromEntries(faculty.map((p) => [p.id, p]));
   const labById = Object.fromEntries(LABS.map((l) => [l.id, l]));
@@ -89,6 +91,7 @@
     star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
     starFill: '<path fill="currentColor" d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
     external: '<path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>',
+    check: '<path d="m5 12 5 5 9-10"/>',
     mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
     arrow: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
     back: '<path d="M19 12H5"/><path d="m11 6-6 6 6 6"/>',
@@ -155,7 +158,7 @@
       <a href="#/p/${esc(p.id)}" class="monogram avatar" style="${monoStyle(p.name)}">${esc(initials(p.name))}</a>
       <a href="#/p/${esc(p.id)}" style="min-width:0">
         <div class="row-name">${esc(p.name)}</div>
-        <div class="row-sub">${esc(p.u.name)}</div>
+        <div class="row-sub">${esc(p.u.name)}${p.affil && p.affil.status === "moved" ? ` <span class="flag-warn" title="${esc(p.affil.note)}">may have moved</span>` : ""}</div>
       </a>
       <div class="row-chips">${tf.map(fieldChip).join("")}</div>
       <div class="row-score small muted" title="Credit-adjusted top-venue papers since ${D.sinceYear}">score ${fmt(score)}<br><span class="faint">active ${p.lastYear}</span></div>
@@ -211,7 +214,7 @@
   }
 
   window.UI = {
-    D, LABS, FIELDS, fieldByKey, unis, faculty, uniById, facultyById, labById, VENUE_NAMES, REGIONS, regionByKey,
+    D, AFFIL, LABS, FIELDS, fieldByKey, unis, faculty, uniById, facultyById, labById, VENUE_NAMES, REGIONS, regionByKey,
     esc, fmt, norm, safeUrl, initials, uniMark, monoStyle, topFields, icon, location,
     fieldBar, fieldChip, starButton, uniCard, facultyRow, labCard, paperItem, skeletonList, toast,
   };
